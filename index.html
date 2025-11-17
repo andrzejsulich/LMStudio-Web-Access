@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LM Studio Chat Interface (Dynamic Chats)</title>
+    <style>
+        /* General styling for the entire page */
+        body {
+            font-family: Arial, sans-serif; 
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- Desktop Layout (Default: Side-by-Side) --- */
+
+        #chat-list-container {
+            width: 20%; 
+            border-right: 1px solid #333; 
+            padding: 15px;
+            background-color: #111; 
+            overflow-y: auto; 
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        #chat-window-container {
+            width: 80%; 
+            display: flex;
+            flex-direction: column;
+            background-color: #000; 
+        }
+        
+        #mobile-menu-toggle {
+            display: none;
+        }
+        
+        /* New Chat Button Style */
+        #new-chat-button {
+            margin-bottom: 15px;
+            padding: 12px;
+            background-color: #2a6fdb; /* Blue accent */
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        #new-chat-button:hover {
+            background-color: #1a5fd0;
+        }
+
+        /* --- Common Styles --- */
+        
+        /* Apply the PowerShell-style monospaced font to the chat history and input elements */
+        #chat-history, #user-input, #loading-indicator, .message {
+            font-family: Consolas, "Liberation Mono", Courier, monospace;
+        }
+        
+        #chat-history {
+            flex-grow: 1; 
+            padding: 20px;
+            overflow-y: auto; 
+            /* Set desktop padding bottom to avoid overlap for non-fixed desktop input */
+            padding-bottom: 20px; 
+        }
+
+        #chat-input-area {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #333;
+            background-color: #111; 
+            align-items: center;
+        }
+
+        #user-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #555;
+            background-color: #222;
+            color: #fff;
+            border-radius: 5px; 
+            resize: none; 
+            min-height: 20px; 
+            max-height: 100px;
+            box-sizing: border-box;
+            margin: 0 5px;
+        }
+
+        /* System Prompt Textarea Style */
+        #system-prompt-input {
+            width: 100%;
+            min-height: 80px;
+            padding: 10px;
+            border: 1px solid #555;
+            background-color: #222;
+            color: #fff;
+            border-radius: 5px;
+            resize: vertical;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        .chat-button {
+            padding: 10px;
+            border: none;
+            background-color: #444;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            border-radius: 5px;
+            flex-shrink: 0;
+        }
+
+        .chat-button:hover {
+            background-color: #666;
+        }
+
+        #send-button, #stop-button {
+             margin: 0 5px; 
+        }
+        
+        /* REMOVED: #image-upload-button styles */
+
+        /* STOP Button specific styles (FIXED: Ensure initial hidden state) */
+        #stop-button {
+            background-color: #e53935; /* Red color */
+            display: none; /* Hidden by default */
+        }
+        
+        #stop-button:hover {
+            background-color: #c62828; 
+        }
+        
+        /* Logic for toggling Send/Stop buttons */
+        #chat-input-area.generating #send-button {
+            display: none;
+        }
+        /* FIXED: Show Stop button when generating */
+        #chat-input-area.generating #stop-button {
+            display: flex; /* Use flex to show it as a button */
+        }
+
+
+        #model-select {
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #555;
+            background-color: #222;
+            color: #fff;
+            border-radius: 5px;
+            width: 100%;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 10px;
+            max-width: 90%;
+            white-space: pre-wrap;
+            /* Ensure long words/sentences wrap correctly */
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .user-message {
+            background-color: #2a6fdb;
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .ai-message {
+            background-color: #444;
+            margin-right: auto;
+        }
+
+        /* Additional role for system welcome messages that aren't user/ai specific */
+        .system-welcome-message {
+            background-color: #333;
+            margin-right: auto;
+            color: #ff9800;
+            font-style: italic;
+        }
+        
+        .chat-history-item {
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-bottom: 5px;
+            transition: background-color 0.2s;
+            display: flex; 
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-history-item.active {
+            background-color: #555;
+            font-weight: bold;
+        }
+
+        .chat-history-item:hover {
+            background-color: #333;
+        }
+
+        /* Container for icons (Rename and Delete) */
+        .chat-actions {
+            display: flex;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+
+        /* Rename and Delete Icon Style */
+        .chat-action-icon {
+            font-size: 14px;
+            padding: 3px;
+            cursor: pointer;
+            color: #aaa;
+            display: none; 
+        }
+        
+        .chat-history-item.active .chat-action-icon,
+        .chat-history-item:hover .chat-action-icon {
+            display: block; 
+        }
+
+        .delete-icon:hover {
+            color: #e53935; 
+        }
+        
+        .rename-icon:hover {
+            color: #fff; 
+        }
+
+
+        /* Loading Indicator Style */
+        #loading-indicator {
+            padding: 10px; 
+            background-color: #333; 
+            color: #ff9800; 
+            text-align: center; 
+            border-radius: 5px; 
+            margin: 0 10px 10px 10px;
+            font-weight: bold;
+        }
+
+        /* CODE BLOCK STYLES */
+        .code-container {
+            position: relative;
+            background: #222;
+            border-radius: 5px;
+            margin-top: 10px;
+            padding-top: 30px; /* Space for the header */
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-width: 100%;
+        }
+
+        .code-header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #333;
+            color: #ccc;
+            padding: 5px 10px;
+            font-size: 12px;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 30px;
+            box-sizing: border-box;
+        }
+        
+        /* REMOVED: .copy-button styles */
+
+        .ai-message pre {
+            margin: 0;
+            padding: 10px;
+            overflow-x: auto;
+            white-space: pre-wrap; 
+            word-break: break-all;
+        }
+        /* END CODE BLOCK STYLES */
+
+        /* --- Mobile Responsiveness (Screen width <= 768px) --- */
+        @media (max-width: 768px) {
+            
+            #chat-window-container {
+                width: 100%;
+                height: 100vh;
+            }
+            
+            #chat-list-container {
+                width: 70%;
+                position: fixed;
+                height: 100%;
+                left: -70%; 
+                transition: left 0.3s ease;
+                padding: 15px;
+                box-shadow: 2px 0 5px rgba(0,0,0,0.5);
+                border: none;
+            }
+
+            #chat-list-container.open {
+                left: 0;
+            }
+            
+            #mobile-menu-toggle {
+                display: flex; 
+                background-color: #111;
+                border-bottom: 1px solid #333;
+                padding: 10px;
+                align-items: center;
+                position: sticky;
+                top: 0;
+                z-index: 5; 
+            }
+
+            /* FIX: Make the input area fixed at the bottom */
+            #chat-input-area {
+                padding: 8px;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                width: 100%;
+                min-height: 56px; 
+                box-sizing: border-box;
+                z-index: 10;
+            }
+
+            /* FIX: Ensure indicator is above the input area, but not fixed */
+            #loading-indicator {
+                margin: 0 10px 10px 10px;
+                position: absolute;
+                bottom: 60px; 
+                width: calc(100% - 20px);
+            }
+            
+            /* --- CRITICAL FIX FOR MOBILE OVERLAP --- */
+            /* Add significant padding to the bottom of the chat history to push content up */
+            #chat-history {
+                flex-grow: 1;
+                padding-bottom: 120px; 
+                padding-top: 50px; 
+                overflow-y: auto;
+            }
+            /* --- END CRITICAL FIX --- */
+
+            #user-input {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="chat-list-container">
+        
+        <div id="new-chat-button">
+            + Start New Chat
+        </div>
+
+        <h3>Select LLM Model</h3>
+        <select id="model-select">
+            <option value="default-model" disabled selected>Loading Models...</option>
+        </select>
+        
+        <h3>System Prompt (Override)</h3>
+        <textarea 
+            id="system-prompt-input" 
+            placeholder="Type your prompt here (e.g., Respond like a pirate). Uses hidden default if left blank."
+        ></textarea>
+        
+        <h3>Chats</h3>
+        <div id="previous-chats">
+            </div>
+    </div>
+
+    <div id="chat-window-container">
+        
+        <div id="mobile-menu-toggle">
+             <button id="toggle-list-button" class="chat-button" style="margin-right: 15px;">☰</button>
+             <h3 style="margin: 0;">LM Studio Chat</h3>
+        </div>
+        
+        <div id="chat-history">
+            </div>
+
+        <div id="loading-indicator" style="display:none;">
+            Answer is generating, please be patient (<span id="loading-timer">0</span>s elapsed)
+        </div>
+
+        <div id="chat-input-area">
+            <textarea id="user-input" placeholder="Type your message here..." rows="1"></textarea>
+            
+            <button id="send-button" class="chat-button">Send</button>
+            
+            <button id="stop-button" class="chat-button">STOP</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration Section ---
+        const CHAT_COOKIE_NAME = 'lm_studio_chats';
+        const CHAT_COOKIE_DAYS = 7;
+        const CHAT_PROXY_URL = 'chat_proxy.php'; 
+        const MODELS_PROXY_URL = 'models_proxy.php';
+        const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+        const TIMEOUT_THRESHOLD = 2000; 
+        let inactivityTimer;
+
+        // UI Element References
+        const chatListContainer = document.getElementById('chat-list-container');
+        const toggleListButton = document.getElementById('toggle-list-button');
+        const modelSelect = document.getElementById('model-select');
+        const systemPromptInput = document.getElementById('system-prompt-input');
+        const chatHistory = document.getElementById('chat-history');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const stopButton = document.getElementById('stop-button'); 
+        const chatInputArea = document.getElementById('chat-input-area'); 
+        // REMOVED: imageUploadButton, imageInput
+        const newChatButton = document.getElementById('new-chat-button');
+        const previousChatsDiv = document.getElementById('previous-chats');
+        const chatWindowContainer = document.getElementById('chat-window-container'); 
+        
+        // TIMER REFERENCES
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const loadingTimerDisplay = document.getElementById('loading-timer');
+        let timerInterval;
+        let initialTimeout;
+        let timerCounter = 0;
+
+        // State Management 
+        let currentChatId = null;
+        let chats = {}; 
+        let currentAbortController = null; 
+        
+        // --- Cookie Utility Functions for Persistence ---
+
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/; SameSite=Lax";
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) {
+                    return decodeURIComponent(c.substring(nameEQ.length, c.length));
+                }
+            }
+            return null;
+        }
+
+        function saveChatsToStorage() {
+            try {
+                const tempChatHistory = {};
+                for (const id in chats) {
+                    tempChatHistory[id] = {
+                        ...chats[id],
+                        messages: chats[id].messages.filter(msg => msg.overrideRole !== 'system-welcome')
+                    };
+                }
+
+                const chatsJson = JSON.stringify(tempChatHistory);
+                setCookie(CHAT_COOKIE_NAME, chatsJson, CHAT_COOKIE_DAYS);
+            } catch (e) {
+                console.error("Failed to save chats to cookie. Data size may exceed 4KB limit.", e);
+            }
+        }
+
+        function loadChatsFromStorage() {
+            const chatsJson = getCookie(CHAT_COOKIE_NAME);
+            if (chatsJson) {
+                try {
+                    const loadedChats = JSON.parse(chatsJson);
+                    chats = loadedChats;
+                    
+                    if (Object.keys(chats).length > 0) {
+                        renderChatList();
+                        const newestChatId = Math.max(...Object.keys(chats).map(id => parseInt(id)));
+                        switchChat(newestChatId, false); 
+                        appendMessage('ai', `Welcome back! Loaded ${Object.keys(chats).length} previous chat(s).`, false, 'system-welcome');
+                        return true;
+                    }
+                } catch (e) {
+                    console.error("Failed to load or parse chats from cookie.", e);
+                }
+            }
+            return false;
+        }
+
+
+        // --- Utility Functions ---
+
+        /* REMOVED: selectCode function */
+        
+        // --- Timer Functions ---
+
+        function startLoadingTimer() {
+            timerCounter = 0;
+            loadingTimerDisplay.textContent = timerCounter;
+            
+            initialTimeout = setTimeout(() => {
+                loadingIndicator.style.display = 'block';
+                
+                timerInterval = setInterval(() => {
+                    timerCounter++;
+                    loadingTimerDisplay.textContent = timerCounter;
+                }, 1000);
+            }, TIMEOUT_THRESHOLD);
+        }
+
+        function stopLoadingTimer() {
+            clearTimeout(initialTimeout);
+            clearInterval(timerInterval);
+            loadingIndicator.style.display = 'none';
+            timerCounter = 0;
+        }
+
+        // --- Core Functions ---
+
+        function resetInactivityTimer() {
+            clearTimeout(inactivityTimer);
+            userInput.disabled = false;
+            sendButton.disabled = false;
+            
+            inactivityTimer = setTimeout(() => {
+                console.log('Session timed out due to 5 minutes of inactivity.');
+                appendMessage('ai', 'Session timed out. Please refresh the page or send a new message to restart.', false, 'system-welcome');
+                userInput.disabled = true;
+                sendButton.disabled = true;
+            }, INACTIVITY_TIMEOUT_MS);
+        }
+        
+        /**
+         * Renders the list of chats in the left-hand navigation panel.
+         */
+        function renderChatList() {
+            previousChatsDiv.innerHTML = '';
+            const sortedChatIds = Object.keys(chats).map(id => parseInt(id)).sort((a, b) => b - a);
+
+            for (const id of sortedChatIds) {
+                const chat = chats[id];
+                const item = document.createElement('div');
+                item.className = 'chat-history-item' + (parseInt(id) === currentChatId ? ' active' : '');
+                item.dataset.chatId = id;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'chat-name-span';
+                nameSpan.textContent = chat.name;
+                item.appendChild(nameSpan);
+
+                const actionsContainer = document.createElement('div');
+                actionsContainer.className = 'chat-actions';
+                
+                const renameIcon = document.createElement('span');
+                renameIcon.className = 'chat-action-icon rename-icon';
+                renameIcon.textContent = '✎';
+                renameIcon.title = 'Rename Chat';
+                renameIcon.addEventListener('click', (e) => {
+                    e.stopPropagation(); 
+                    renameChatPrompt(parseInt(id));
+                });
+                actionsContainer.appendChild(renameIcon);
+
+                const deleteIcon = document.createElement('span');
+                deleteIcon.className = 'chat-action-icon delete-icon';
+                deleteIcon.textContent = 'X';
+                deleteIcon.title = 'Delete Chat';
+                deleteIcon.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (confirm(`Are you sure you want to delete "${chats[id].name}"?`)) {
+                        deleteChat(parseInt(id));
+                    }
+                });
+                actionsContainer.appendChild(deleteIcon);
+                
+                item.appendChild(actionsContainer); 
+
+                previousChatsDiv.appendChild(item); 
+            }
+        }
+
+
+        function startNewChat() {
+            document.querySelectorAll('.chat-history-item').forEach(i => i.classList.remove('active'));
+
+            const newId = Date.now();
+            currentChatId = newId;
+
+            chats[newId] = {
+                name: 'New Chat',
+                messages: [],
+                model: modelSelect.value
+            };
+            
+            renderChatList(); 
+
+            chatHistory.innerHTML = '';
+            appendMessage('ai', 'Chat started. Please type your first message.', false, 'system-welcome'); 
+            
+            saveChatsToStorage(); 
+            resetInactivityTimer();
+            if (window.innerWidth <= 768) {
+                toggleMobileChatList(false);
+            }
+        }
+        
+        function deleteChat(chatIdToDelete) {
+            const idToDelete = parseInt(chatIdToDelete);
+
+            delete chats[idToDelete];
+
+            if (currentChatId === idToDelete) {
+                const remainingChatIds = Object.keys(chats).map(id => parseInt(id)).sort((a, b) => b - a);
+                
+                if (remainingChatIds.length > 0) {
+                    const nextChatId = remainingChatIds[0];
+                    switchChat(nextChatId);
+                } else {
+                    currentChatId = null;
+                    startNewChat();
+                }
+            } else {
+                 renderChatList(); 
+            }
+            
+            stopLoadingTimer();
+            saveChatsToStorage(); 
+        }
+
+
+        function switchChat(chatId, save=true) {
+            const id = parseInt(chatId);
+            if (id === currentChatId) return;
+
+            currentChatId = id;
+            
+            document.querySelectorAll('.chat-history-item').forEach(i => i.classList.remove('active'));
+            document.querySelector(`[data-chat-id="${id}"]`).classList.add('active');
+
+            chatHistory.innerHTML = '';
+            chats[id].messages.forEach(msg => {
+                appendMessage(msg.role, msg.content, false);
+            });
+            
+            if (modelSelect.value !== chats[id].model) {
+                 modelSelect.value = chats[id].model;
+            }
+            
+            resetInactivityTimer();
+            if (window.innerWidth <= 768) {
+                toggleMobileChatList(false);
+            }
+            if (save) {
+                saveChatsToStorage();
+            }
+        }
+
+        async function fetchModels() {
+            try {
+                const response = await fetch(MODELS_PROXY_URL);
+                if (!response.ok) {
+                    throw new Error(`Proxy failed with status: ${response.status}`);
+                }
+                const data = await response.json();
+                
+                modelSelect.innerHTML = ''; 
+
+                if (data.data && data.data.length > 0) {
+                    data.data.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = model.id; 
+                        modelSelect.appendChild(option);
+                    });
+                    modelSelect.value = data.data[0].id;
+
+                    const hasLoadedChats = loadChatsFromStorage();
+
+                    if (!hasLoadedChats) {
+                        appendMessage('ai', `Successfully loaded ${data.data.length} available model(s).`, false, 'system-welcome');
+                        startNewChat(); 
+                    }
+                } else {
+                    modelSelect.innerHTML = '<option disabled selected>No models running in LM Studio.</option>';
+                    appendMessage('ai', 'ERROR: No models detected. Start a model in LM Studio to begin.', false, 'system-welcome');
+                }
+            } catch (error) {
+                console.error('Failed to fetch models:', error);
+                modelSelect.innerHTML = '<option disabled selected>Error connecting to model proxy.</option>';
+                appendMessage('ai', `FATAL ERROR: Could not connect to models proxy. ${error.message}`, false, 'system-welcome');
+            }
+        }
+
+        /**
+         * Renders text and formats bold words.
+         * @param {string} text The raw text content.
+         * @returns {string} The HTML content with bold tags.
+         */
+        function formatTextContent(text) {
+            // 1. Escape HTML entities first to prevent injection issues, but preserve the markers
+            let html = text.replace(/&/g, '&amp;')
+                           .replace(/</g, '&lt;')
+                           .replace(/>/g, '&gt;');
+            
+            // 2. Replace the ** markers with <strong> tags
+            // Use a regex to find **text** patterns but ignore internal asterisks
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // 3. Replace newlines with <br> for regular text (outside code blocks)
+            html = html.replace(/\n/g, '<br>');
+            
+            return html;
+        }
+
+        /**
+         * Appends a message to the chat history. Handles code block rendering.
+         */
+        function appendMessage(role, content, save = true, overrideRole = null) {
+            const displayRole = overrideRole || role;
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${displayRole}-message`;
+            
+            if (content.includes('```')) {
+                // Code block detected
+                const parts = content.split(/```/g);
+                let htmlContent = '';
+                
+                for(let i = 0; i < parts.length; i++) {
+                    const part = parts[i];
+                    if (i % 2 !== 0) {
+                        // This is inside a code block
+                        
+                        const firstNewlineIndex = part.indexOf('\n');
+                        let language = 'Code';
+                        let code = part; 
+
+                        if (firstNewlineIndex > -1) {
+                            // Extract language from the first line
+                            language = part.substring(0, firstNewlineIndex).trim() || 'Code';
+                            code = part.substring(firstNewlineIndex + 1); 
+                        } else {
+                            language = 'Code';
+                            code = part;
+                        }
+                        
+                        const cleanCode = code.trim(); 
+
+                        const container = document.createElement('div');
+                        container.className = 'code-container';
+                        
+                        const header = document.createElement('div');
+                        header.className = 'code-header';
+                        
+                        const langSpan = document.createElement('span');
+                        langSpan.textContent = language; 
+                        header.appendChild(langSpan);
+                        
+                        // REMOVED: Copy Button creation and logic
+
+                        const pre = document.createElement('pre');
+                        // Use textContent to safely insert code text without HTML injection
+                        pre.textContent = cleanCode; 
+                        
+                        // REMOVED: header.appendChild(copyButton);
+                        container.appendChild(header);
+                        container.appendChild(pre);
+
+                        htmlContent += container.outerHTML;
+
+                    } else {
+                        // This is outside the code block - apply bold formatting and newlines
+                        htmlContent += formatTextContent(part);
+                    }
+                }
+
+                messageDiv.innerHTML = htmlContent;
+
+            } else {
+                // Regular text - apply bold formatting and newlines
+                messageDiv.innerHTML = formatTextContent(content);
+            }
+            
+            chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+
+            if (save && currentChatId !== null) {
+                chats[currentChatId].messages.push({ role, content, overrideRole }); 
+                saveChatsToStorage(); 
+            }
+        }
+        
+        function autoRenameChat(firstMessage) {
+             const newName = firstMessage.substring(0, 30).trim() + (firstMessage.length > 30 ? '...' : '');
+             if (chats[currentChatId]) {
+                 chats[currentChatId].name = newName;
+                 renderChatList(); 
+                 saveChatsToStorage(); 
+             }
+        }
+
+        function renameChatPrompt(chatId) {
+            const currentName = chats[chatId].name;
+            const newName = prompt("Enter new name for the chat:", currentName);
+            
+            if (newName && newName.trim() !== "" && newName.trim() !== currentName) {
+                const finalName = newName.trim();
+                chats[chatId].name = finalName;
+                renderChatList(); 
+                saveChatsToStorage(); 
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // STREAMING IMPLEMENTATION (UPDATED WITH ABORTCONTROLLER)
+        // ----------------------------------------------------------------
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            const selectedModel = modelSelect.value;
+            const clientSystemPrompt = systemPromptInput.value.trim(); 
+            
+            if (!message || !selectedModel || selectedModel === 'default-model' || currentChatId === null) return;
+            
+            const isFirstMessage = chats[currentChatId].messages.length === 0;
+
+            resetInactivityTimer();
+            
+            userInput.value = '';
+            userInput.disabled = true;
+            chatInputArea.classList.add('generating'); // Show STOP button
+
+            // Initialize AbortController
+            currentAbortController = new AbortController(); 
+            const signal = currentAbortController.signal;
+
+            // 1. Append the user message immediately
+            appendMessage('user', message);
+            
+            // 2. Prepare the AI response element for streaming
+            const aiResponseDiv = document.createElement('div');
+            aiResponseDiv.className = 'message ai-message';
+            chatHistory.appendChild(aiResponseDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+
+            let fullAiResponse = "";
+            startLoadingTimer(); 
+
+            const payload = {
+                model: selectedModel,
+                user_message: message,
+                system_prompt: clientSystemPrompt 
+            };
+
+            try {
+                const response = await fetch(CHAT_PROXY_URL, { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: signal 
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Proxy failed with status: ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let buffer = ""; 
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    let lines = buffer.split('\n');
+                    buffer = lines.pop(); 
+
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            const jsonString = line.substring(5).trim();
+
+                            if (jsonString === '[DONE]') {
+                                continue; 
+                            }
+                            
+                            try {
+                                const chunk = JSON.parse(jsonString);
+                                const delta = chunk.choices[0]?.delta?.content;
+
+                                if (delta) {
+                                    fullAiResponse += delta;
+                                    // Update streaming output with content (no formatting during stream)
+                                    aiResponseDiv.textContent = fullAiResponse;
+                                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                                }
+                            } catch (e) {
+                                if (jsonString.includes('"error"')) {
+                                     const errorData = JSON.parse(jsonString);
+                                     throw new Error(errorData.error || "Unknown stream error.");
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // If stream finished gracefully (not aborted)
+                if (!signal.aborted) {
+                    finalizeResponse(fullAiResponse, aiResponseDiv, isFirstMessage, false);
+                }
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    // Stream was intentionally stopped by the user
+                    finalizeResponse(fullAiResponse, aiResponseDiv, isFirstMessage, true);
+                    console.log("Generation stopped by user.");
+                } else {
+                    // Actual error occurred
+                    console.error("Chat API Error:", error);
+                    aiResponseDiv.textContent = `[STREAM ERROR] ${error.message}`;
+                    aiResponseDiv.className = 'message system-welcome-message';
+                    chats[currentChatId].messages.push({ role: 'ai', content: `[STREAM ERROR] ${error.message}` });
+                    saveChatsToStorage();
+                }
+            } finally {
+                stopLoadingTimer(); 
+                userInput.disabled = false;
+                chatInputArea.classList.remove('generating'); // Hide STOP button
+                sendButton.disabled = false;
+                userInput.focus();
+                currentAbortController = null; // Clear controller
+            }
+        }
+        
+        /**
+         * Handles the final saving and rendering of the AI response content.
+         */
+        function finalizeResponse(content, displayDiv, isFirstMessage, wasAborted) {
+            let finalContent = content;
+            if (wasAborted) {
+                finalContent += '\n\n**[GENERATION STOPPED BY USER]**';
+            }
+            
+            // Remove the temporary displayDiv used for raw streaming
+            displayDiv.remove();
+
+            // Append the final message, triggering the correct formatting (code blocks and bold)
+            appendMessage('ai', finalContent);
+
+            if (isFirstMessage) {
+                autoRenameChat(chats[currentChatId].messages[0].content); 
+            }
+        }
+        
+        function stopGeneration() {
+            if (currentAbortController) {
+                currentAbortController.abort();
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // END OF STREAMING IMPLEMENTATION
+        // ----------------------------------------------------------------
+        
+        function toggleMobileChatList(toggle = true) {
+             const isOpen = chatListContainer.classList.contains('open');
+             if (toggle) {
+                 chatListContainer.classList.toggle('open');
+             } else if (isOpen) {
+                 chatListContainer.classList.remove('open');
+             }
+             toggleListButton.textContent = chatListContainer.classList.contains('open') ? '✕' : '☰';
+        }
+
+        // --- Event Listeners and Initialization ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchModels();
+            resetInactivityTimer(); 
+        });
+
+        newChatButton.addEventListener('click', startNewChat);
+        sendButton.addEventListener('click', sendMessage);
+        stopButton.addEventListener('click', stopGeneration); 
+
+        userInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault(); 
+                if (!chatInputArea.classList.contains('generating')) {
+                    sendMessage();
+                }
+            }
+        });
+
+        // REMOVED: Image button listeners
+        
+        if (toggleListButton) {
+            toggleListButton.addEventListener('click', (e) => {
+                e.stopPropagation(); 
+                toggleMobileChatList(true);
+            });
+        }
+        
+        chatWindowContainer.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                toggleMobileChatList(false);
+            }
+        });
+
+
+        ['mousemove', 'keypress', 'scroll', 'click'].forEach(event => {
+            document.addEventListener(event, resetInactivityTimer);
+        });
+
+        // Chat switching logic
+        previousChatsDiv.addEventListener('click', (event) => {
+            const item = event.target.closest('.chat-history-item');
+            if (item && !event.target.closest('.chat-actions')) {
+                const chatId = parseInt(item.dataset.chatId);
+                switchChat(chatId);
+            }
+        });
+
+        modelSelect.addEventListener('change', () => {
+            if (currentChatId !== null) {
+                chats[currentChatId].model = modelSelect.value;
+                saveChatsToStorage(); 
+            }
+        });
+    </script>
+</body>
+</html>
